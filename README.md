@@ -145,23 +145,17 @@ The frontend will run on `http://localhost:5173`
 #### Backend Environment Variables (.env)
 
 ```env
-# Flask Configuration
+# 千帆 Embedding API
+QIANFAN_ACCESS_KEY=your_access_key
+QIANFAN_SECRET_KEY=your_secret_key
+
+# 月之暗面 LLM API
+OPENAI_API_KEY=your_moonshot_api_key
+OPENAI_API_BASE=https://api.moonshot.cn/v1
+
+# Flask 配置
 FLASK_DEBUG=1
-FLASK_ENV=development
-
-# Database Configuration
-SQLALCHEMY_DATABASE_URI=postgresql://user:password@localhost:5432/dbname
-SQLALCHEMY_POOL_SIZE=30
-SQLALCHEMY_POOL_RECYCLE=3600
-
-# OpenAI Configuration
-OPENAI_API_KEY=your_api_key_here
-OPENAI_API_BASE=https://api.openai.com/v1
-
-# Optional: LangSmith for tracing
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=your_langsmith_key
-LANGCHAIN_PROJECT=your_project_name
+WTF_CSRF_ENABLED=False
 ```
 
 ### Project Structure
@@ -340,23 +334,17 @@ npm run dev
 #### 后端环境变量 (.env)
 
 ```env
+# 千帆 Embedding API
+QIANFAN_ACCESS_KEY=your_access_key
+QIANFAN_SECRET_KEY=your_secret_key
+
+# 月之暗面 LLM API
+OPENAI_API_KEY=your_moonshot_api_key
+OPENAI_API_BASE=https://api.moonshot.cn/v1
+
 # Flask 配置
 FLASK_DEBUG=1
-FLASK_ENV=development
-
-# 数据库配置
-SQLALCHEMY_DATABASE_URI=postgresql://user:password@localhost:5432/dbname
-SQLALCHEMY_POOL_SIZE=30
-SQLALCHEMY_POOL_RECYCLE=3600
-
-# OpenAI 配置
-OPENAI_API_KEY=your_api_key_here
-OPENAI_API_BASE=https://api.openai.com/v1
-
-# 可选配置: LangSmith 追踪
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=your_langsmith_key
-LANGCHAIN_PROJECT=your_project_name
+WTF_CSRF_ENABLED=False
 ```
 
 ### 项目结构
