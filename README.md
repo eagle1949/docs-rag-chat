@@ -1,10 +1,11 @@
-# 文档问答系统 / Document Q&A System
+# 本地文档 RAG 问答系统 / Local Document RAG Q&A System
 
 [English](#english) | [中文](#chinese)
 
 ---
 
 <a name="english"></a>
+
 ## English
 
 ### Project Overview
@@ -23,6 +24,7 @@ A modern Document Q&A System built with **RAG (Retrieval-Augmented Generation)**
 ### Architecture
 
 #### Frontend
+
 - **Framework**: Vue 3 + TypeScript + Vite
 - **UI Library**: Arco Design
 - **State Management**: Pinia
@@ -30,6 +32,7 @@ A modern Document Q&A System built with **RAG (Retrieval-Augmented Generation)**
 - **Styling**: Tailwind CSS
 
 #### Backend
+
 - **Framework**: Flask (Python)
 - **AI/ML**: LangChain, OpenAI API
 - **Vector Database**: FAISS
@@ -39,6 +42,7 @@ A modern Document Q&A System built with **RAG (Retrieval-Augmented Generation)**
 ### Quick Start
 
 #### Prerequisites
+
 - Node.js 18+
 - Python 3.13+
 - PostgreSQL 13+
@@ -47,11 +51,13 @@ A modern Document Q&A System built with **RAG (Retrieval-Augmented Generation)**
 #### Backend Setup
 
 1. **Navigate to backend directory**:
+
 ```bash
 cd Backend
 ```
 
 2. **Install dependencies** (using uv):
+
 ```bash
 # Install uv if you haven't already
 pip install uv
@@ -61,6 +67,7 @@ uv sync
 ```
 
 3. **Configure environment variables**:
+
 ```bash
 # Copy the example environment file
 cp .env.example .env
@@ -70,12 +77,14 @@ cp .env.example .env
 ```
 
 4. **Initialize database**:
+
 ```bash
 # Run database migrations
 flask db upgrade
 ```
 
 5. **Start the backend server**:
+
 ```bash
 python app/http/app.py
 ```
@@ -85,11 +94,13 @@ The backend will run on `http://localhost:5000`
 #### Frontend Setup
 
 1. **Navigate to frontend directory**:
+
 ```bash
 cd frontend
 ```
 
 2. **Install dependencies**:
+
 ```bash
 # Using yarn (recommended)
 yarn install
@@ -99,6 +110,7 @@ npm install
 ```
 
 3. **Start the development server**:
+
 ```bash
 # Using yarn
 yarn dev
@@ -131,6 +143,7 @@ The frontend will run on `http://localhost:5173`
 ### Configuration
 
 #### Backend Environment Variables (.env)
+
 ```env
 # Flask Configuration
 FLASK_DEBUG=1
@@ -187,6 +200,7 @@ This project is open source and available under the MIT License.
 ---
 
 <a name="chinese"></a>
+
 ## 中文
 
 ### 项目简介
@@ -205,6 +219,7 @@ This project is open source and available under the MIT License.
 ### 技术架构
 
 #### 前端技术栈
+
 - **框架**: Vue 3 + TypeScript + Vite
 - **UI 库**: Arco Design
 - **状态管理**: Pinia
@@ -212,6 +227,7 @@ This project is open source and available under the MIT License.
 - **样式**: Tailwind CSS
 
 #### 后端技术栈
+
 - **框架**: Flask (Python)
 - **AI/ML**: LangChain、OpenAI API
 - **向量数据库**: FAISS
@@ -221,6 +237,7 @@ This project is open source and available under the MIT License.
 ### 快速开始
 
 #### 环境要求
+
 - Node.js 18+
 - Python 3.13+
 - PostgreSQL 13+
@@ -229,11 +246,13 @@ This project is open source and available under the MIT License.
 #### 后端设置
 
 1. **进入后端目录**:
+
 ```bash
 cd Backend
 ```
 
 2. **安装依赖**（使用 uv）:
+
 ```bash
 # 如果尚未安装 uv
 pip install uv
@@ -243,6 +262,7 @@ uv sync
 ```
 
 3. **配置环境变量**:
+
 ```bash
 # 复制示例环境文件
 cp .env.example .env
@@ -252,12 +272,14 @@ cp .env.example .env
 ```
 
 4. **初始化数据库**:
+
 ```bash
 # 运行数据库迁移
 flask db upgrade
 ```
 
 5. **启动后端服务**:
+
 ```bash
 python app/http/app.py
 ```
@@ -267,11 +289,13 @@ python app/http/app.py
 #### 前端设置
 
 1. **进入前端目录**:
+
 ```bash
 cd frontend
 ```
 
 2. **安装依赖**:
+
 ```bash
 # 使用 yarn（推荐）
 yarn install
@@ -281,6 +305,7 @@ npm install
 ```
 
 3. **启动开发服务器**:
+
 ```bash
 # 使用 yarn
 yarn dev
@@ -313,6 +338,7 @@ npm run dev
 ### 配置说明
 
 #### 后端环境变量 (.env)
+
 ```env
 # Flask 配置
 FLASK_DEBUG=1
