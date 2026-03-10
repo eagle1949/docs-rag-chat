@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Document Q&A Application</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* 顶部标题栏 */
+        .header {
+            background-color: #f0f0f0;
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #333;
+        }
+
+        /* 主内容区 - 三栏布局 */
+        .main-content {
+            display: flex;
+            min-height: 600px;
+        }
+
+        /* 左侧文档管理区 */
+        .left-panel {
+            flex: 1;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #333;
+        }
+
+        .upload-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #e0e0e0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .upload-btn:hover {
+            background-color: #d0d0d0;
+        }
+
+        .upload-hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .documents-section {
+            margin-top: 30px;
+        }
+
+        .documents-list {
+            list-style: none;
+            margin-top: 10px;
+        }
+
+        .documents-list li {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .documents-list li::before {
+            content: "- ";
+            margin-right: 5px;
+        }
+
+        /* 中间问答交互区 */
+        .middle-panel {
+            flex: 2;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+        }
+
+        .qa-display {
+            margin-bottom: 20px;
+        }
+
+        .question-box, .answer-box {
+            margin-bottom: 15px;
+        }
+
+        .question-box label, .answer-box label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .question-box input, .answer-box textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .answer-box textarea {
+            min-height: 150px;
+            resize: vertical;
+            background-color: #f9f9f9;
+        }
+
+        .input-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .input-bar input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .send-btn {
+            padding: 12px 30px;
+            background-color: #e0e0e0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .send-btn:hover {
+            background-color: #d0d0d0;
+        }
+
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* 右侧参考来源区 */
+        .right-panel {
+            flex: 1;
+            padding: 20px;
+        }
+
+        .references-list {
+            margin-top: 10px;
+        }
+
+        .reference-item {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .reference-title {
+            font-weight: bold;
+            font-size: 13px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .reference-content {
+            font-size: 12px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .reference-meta {
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        /* 消息提示 */
+        .message {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .message.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 隐藏文件输入框 */
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部标题栏 -->
+        <div class="header">
+            <h1>AI Document Q&A Application</h1>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 左侧文档管理区 -->
+            <div class="left-panel">
+                <h2 class="panel-title">Document Q&A</h2>
+
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                    <span>📁</span>
+                    <span>Upload Files</span>
+                </button>
+                <input type="file" id="fileInput" accept=".md,.txt" multiple onchange="handleFileUpload(event)">
+
+                <p class="upload-hint">Select or upload your documents below</p>
+
+                <div class="documents-section">
+                    <h3 style="font-size: 16px; margin-bottom: 10px;">Documents</h3>
+                    <ul class="documents-list" id="documentsList">
+                        <li style="color: #999;">No documents uploaded</li>
+                    </ul>
+                </div>
+
+                <div id="uploadMessage"></div>
+            </div>
+
+            <!-- 中间问答交互区 -->
+            <div class="middle-panel">
+                <h2 class="panel-title">Ask a Question</h2>
+
+                <div class="qa-display">
+                    <div class="question-box">
+                        <label>You:</label>
+                        <input type="text" id="userQuestion" placeholder="Your question here..." readonly>
+                    </div>
+
+                    <div class="answer-box">
+                        <label>AI:</label>
+                        <textarea id="aiAnswer" placeholder="AI generated answer will appear here..." readonly></textarea>
+                    </div>
+                </div>
+
+                <div class="input-bar">
+                    <input type="text" id="questionInput" placeholder="Type your question..." onkeypress="handleKeyPress(event)">
+                    <button class="send-btn" id="sendBtn" onclick="sendQuestion()">Send</button>
+                </div>
+
+                <div id="qaMessage"></div>
+            </div>
+
+            <!-- 右侧参考来源区 -->
+            <div class="right-panel">
+                <h2 class="panel-title">References</h2>
+
+                <div class="references-list" id="referencesList">
+                    <p style="color: #999; font-size: 14px;">No references available</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = '';  // 使用相对路径，避免跨域问题
+        let uploadedDocuments = [];
+
+        // 处理文件上传
+        async function handleFileUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            const uploadBtn = document.querySelector('.upload-btn');
+            const originalText = uploadBtn.innerHTML;
+            uploadBtn.innerHTML = '<span class="loading"></span> Uploading...';
+            uploadBtn.disabled = true;
+
+            try {
+                for (let file of files) {
+                    await uploadFile(file);
+                }
+                showMessage('uploadMessage', 'success', `Successfully uploaded ${files.length} file(s)`);
+                updateDocumentsList();
+            } catch (error) {
+                showMessage('uploadMessage', 'error', 'Upload failed: ' + error.message);
+            } finally {
+                uploadBtn.innerHTML = originalText;
+                uploadBtn.disabled = false;
+                event.target.value = ''; // 清空文件选择
+            }
+        }
+
+        // 上传单个文件
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${API_BASE_URL}/rag/documents/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.code === 'success') {
+                uploadedDocuments.push({
+                    filename: result.data.filename,
+                    size: result.data.size,
+                    chunks: result.data.chunks
+                });
+            } else {
+                throw new Error(result.data?.message || 'Upload failed');
+            }
+        }
+
+        // 更新文档列表
+        function updateDocumentsList() {
+            const listElement = document.getElementById('documentsList');
+
+            if (uploadedDocuments.length === 0) {
+                listElement.innerHTML = '<li style="color: #999;">No documents uploaded</li>';
+                return;
+            }
+
+            listElement.innerHTML = uploadedDocuments
+                .map(doc => `<li>${doc.filename} (${(doc.size / 1024).toFixed(1)} KB, ${doc.chunks} chunks)</li>`)
+                .join('');
+        }
+
+        // 发送问题
+        async function sendQuestion() {
+            const questionInput = document.getElementById('questionInput');
+            const question = questionInput.value.trim();
+
+            if (!question) {
+                showMessage('qaMessage', 'error', 'Please enter a question');
+                return;
+            }
+
+            if (uploadedDocuments.length === 0) {
+                showMessage('qaMessage', 'error', 'Please upload documents first');
+                return;
+            }
+
+            // 更新 UI
+            document.getElementById('userQuestion').value = question;
+            document.getElementById('aiAnswer').value = '';
+            document.getElementById('referencesList').innerHTML = '<p style="color: #999; font-size: 14px;"><span class="loading"></span> Thinking...</p>';
+
+            const sendBtn = document.getElementById('sendBtn');
+            sendBtn.disabled = true;
+            sendBtn.textContent = 'Sending...';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/rag/ask`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ question: question })
+                });
+
+                const result = await response.json();
+
+                if (result.code === 'success') {
+                    // 显示答案
+                    document.getElementById('aiAnswer').value = result.data.answer;
+
+                    // 显示引用
+                    displayReferences(result.data.sources);
+
+                    showMessage('qaMessage', 'success', 'Answer generated successfully');
+                } else {
+                    throw new Error(result.data?.message || 'Request failed');
+                }
+            } catch (error) {
+                showMessage('qaMessage', 'error', 'Error: ' + error.message);
+                document.getElementById('aiAnswer').value = 'Error: ' + error.message;
+                document.getElementById('referencesList').innerHTML = '<p style="color: #999; font-size: 14px;">No references available</p>';
+            } finally {
+                sendBtn.disabled = false;
+                sendBtn.textContent = 'Send';
+                questionInput.value = '';
+            }
+        }
+
+        // 显示引用来源
+        function displayReferences(sources) {
+            const referencesElement = document.getElementById('referencesList');
+
+            if (!sources || sources.length === 0) {
+                referencesElement.innerHTML = '<p style="color: #999; font-size: 14px;">No references available</p>';
+                return;
+            }
+
+            referencesElement.innerHTML = sources
+                .map((source, index) => `
+                    <div class="reference-item">
+                        <div class="reference-title">Source ${index + 1}: ${source.filename}</div>
+                        <div class="reference-content">${source.content}</div>
+                        <div class="reference-meta">Score: ${(source.score * 100).toFixed(1)}% | Chunk: ${source.chunk_id}</div>
+                    </div>
+                `)
+                .join('');
+        }
+
+        // 显示消息提示
+        function showMessage(elementId, type, message) {
+            const messageElement = document.getElementById(elementId);
+            messageElement.innerHTML = `<div class="message ${type}">${message}</div>`;
+
+            // 3秒后自动清除
+            setTimeout(() => {
+                messageElement.innerHTML = '';
+            }, 3000);
+        }
+
+        // 处理回车键
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendQuestion();
+            }
+        }
+
+        // 页面加载时检查本地存储的文档
+        window.onload = function() {
+            updateDocumentsList();
+        };
+    </script>
+</body>
+</html>
