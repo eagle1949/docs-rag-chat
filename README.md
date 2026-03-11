@@ -85,8 +85,17 @@ flask db upgrade
 
 5. **Start the backend server**:
 
-```bash
-python app/http/app.py
+Windows (recommended):
+
+```bat
+run_backend.bat
+```
+
+CLI alternative:
+
+```powershell
+set PYTHONPATH=.
+uv run python -m app.http.app
 ```
 
 The backend will run on `http://localhost:5000`
@@ -274,8 +283,13 @@ flask db upgrade
 
 5. **启动后端服务**:
 
-```bash
-python app/http/app.py
+```bat
+run_backend.bat
+```
+
+```powershell
+set PYTHONPATH=.
+uv run python -m app.http.app
 ```
 
 后端服务将运行在 `http://localhost:5000`
