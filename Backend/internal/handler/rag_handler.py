@@ -29,6 +29,17 @@ class RAGHandler:
     ALLOWED_EXTENSIONS = {"md", "txt", "pdf"}
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB
 
+    @staticmethod
+    def _format_data_sse(data) -> str:
+        payload_text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
+        # SSE 规范：多行数据需要每行前都带 data:
+        data_lines = payload_text.splitlines() or [""]
+        chunks = []
+        for line in data_lines:
+            chunks.append(f"data: {line}\n")
+        chunks.append("\n")
+        return "".join(chunks)
+
     def rag_page(self):
         return render_template("rag.html")
 
@@ -143,13 +154,22 @@ class RAGHandler:
                 ):
                     event = item.get("event", "message")
                     data = item.get("data", "")
-                    payload_text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False)
-                    yield f"event: {event}\n"
-                    yield f"data: {payload_text}\n\n"
+                    if event == "token":
+                        yield self._format_data_sse({"content": data if isinstance(data, str) else str(data)})
+                    elif event == "done":
+                        payload = data if isinstance(data, dict) else {"session_id": session_id, "sources": []}
+                        payload["done"] = True
+                        yield self._format_data_sse(payload)
+                        yield self._format_data_sse("[DONE]")
+                    elif event == "error":
+                        if isinstance(data, dict):
+                            yield self._format_data_sse({"error": data.get("message", "流式响应出错")})
+                        else:
+                            yield self._format_data_sse({"error": str(data)})
+                    else:
+                        yield self._format_data_sse({"content": data if isinstance(data, str) else str(data)})
             except Exception as e:
-                err = json.dumps({"message": f"流式提问失败: {str(e)}"}, ensure_ascii=False)
-                yield "event: error\n"
-                yield f"data: {err}\n\n"
+                yield self._format_data_sse({"error": f"流式提问失败: {str(e)}"})
 
         return Response(
             stream_with_context(event_stream()),

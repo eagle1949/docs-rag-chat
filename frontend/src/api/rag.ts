@@ -129,40 +129,44 @@ export const askQuestionStream = async (
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+  let donePayload: AskStreamDonePayload | null = null
 
-  const processEventBlock = (block: string) => {
-    const lines = block.split('\n')
-    let event = 'message'
-    const dataLines: string[] = []
-    for (const line of lines) {
-      if (line.startsWith('event:')) {
-        event = line.slice(6).trim()
-      } else if (line.startsWith('data:')) {
-        // Keep token leading spaces from SSE payload (only strip the protocol delimiter space).
-        const raw = line.slice(5)
-        dataLines.push(raw.startsWith(' ') ? raw.slice(1) : raw)
-      }
+  const processDataLine = (dataText: string) => {
+    const text = dataText.trim()
+    if (!text) return
+
+    if (text === '[DONE]') {
+      handlers.onDone(donePayload || { session_id: data.session_id, sources: [] })
+      donePayload = null
+      return
     }
-    const dataText = dataLines.join('\n')
-    if (event === 'token') {
+
+    try {
+      const payload = JSON.parse(text) as {
+        content?: string
+        error?: string
+        done?: boolean
+        session_id?: string
+        sources?: SourceItem[]
+        message?: string
+      }
+
+      if (payload.error) {
+        handlers.onError(payload.error)
+        return
+      }
+      if (typeof payload.content === 'string') {
+        handlers.onToken(payload.content)
+      }
+      if (payload.done) {
+        donePayload = {
+          session_id: payload.session_id || data.session_id,
+          sources: payload.sources || [],
+        }
+      }
+    } catch {
+      // Backward compatibility: plain token string
       handlers.onToken(dataText)
-      return
-    }
-    if (event === 'done') {
-      try {
-        handlers.onDone(JSON.parse(dataText) as AskStreamDonePayload)
-      } catch {
-        handlers.onDone({ session_id: data.session_id, sources: [] })
-      }
-      return
-    }
-    if (event === 'error') {
-      try {
-        const payload = JSON.parse(dataText) as { message?: string }
-        handlers.onError(payload.message || '流式响应出错')
-      } catch {
-        handlers.onError(dataText || '流式响应出错')
-      }
     }
   }
 
@@ -171,11 +175,21 @@ export const askQuestionStream = async (
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })
-    const blocks = buffer.split('\n\n')
-    buffer = blocks.pop() || ''
-    for (const block of blocks) {
-      if (block.trim()) processEventBlock(block)
+    const lines = buffer.split(/\r?\n/)
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue
+      const raw = line.slice(5)
+      processDataLine(raw.startsWith(' ') ? raw.slice(1) : raw)
     }
+  }
+
+  if (buffer.trim().startsWith('data:')) {
+    const raw = buffer.trim().slice(5)
+    processDataLine(raw.startsWith(' ') ? raw.slice(1) : raw)
+  }
+  if (donePayload) {
+    handlers.onDone(donePayload)
   }
 }
 

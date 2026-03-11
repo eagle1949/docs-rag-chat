@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -199,6 +200,16 @@ class RAGService:
         session = session_id.strip() or "default"
         memory = self._memory_for(app, session)
         chat_history = memory.load_memory_variables().get("chat_history", "")
+
+        profile_ack = self._try_ack_profile_input(question)
+        if profile_ack:
+            memory.save_context(question, profile_ack)
+            return {
+                "answer": profile_ack,
+                "session_id": session,
+                "sources": [],
+            }
+
         memory_answer = self._try_answer_from_memory(question, chat_history)
         if memory_answer:
             memory.save_context(question, memory_answer)
@@ -260,7 +271,7 @@ class RAGService:
                 "sources": [],
             }
         except Exception as e:
-            raise Exception(f"回答问题失败: {str(e)}")
+            raise Exception(self._friendly_llm_error(e))
 
     def ask_question_stream(self, app_id: str, question: str, session_id: str) -> Iterator[Dict[str, Any]]:
         """
@@ -270,6 +281,13 @@ class RAGService:
         session = session_id.strip() or "default"
         memory = self._memory_for(app, session)
         chat_history = memory.load_memory_variables().get("chat_history", "")
+
+        profile_ack = self._try_ack_profile_input(question)
+        if profile_ack:
+            memory.save_context(question, profile_ack)
+            yield {"event": "token", "data": profile_ack}
+            yield {"event": "done", "data": {"session_id": session, "sources": []}}
+            return
 
         memory_answer = self._try_answer_from_memory(question, chat_history)
         if memory_answer:
@@ -307,7 +325,7 @@ class RAGService:
             memory.save_context(question, full_answer)
             yield {"event": "done", "data": {"session_id": session, "sources": sources}}
         except Exception as e:
-            yield {"event": "error", "data": {"message": f"流式回答失败: {str(e)}"}}
+            yield {"event": "error", "data": {"message": self._friendly_llm_error(e)}}
 
     def _try_answer_from_memory(self, question: str, chat_history: str) -> str | None:
         """优先处理显式会话类问题，避免被文档检索噪音干扰。"""
@@ -315,15 +333,44 @@ class RAGService:
         if not q or not chat_history:
             return None
 
-        memory_question_keywords = ("我叫什么", "我的名字", "你记得我叫", "我是谁")
-        if not any(k in q for k in memory_question_keywords):
+        if not self._is_name_query(q):
             return None
 
-        # 从历史中提取最近一次“我叫xxx”
-        matches = re.findall(r"我叫([A-Za-z0-9_\u4e00-\u9fff]{1,20})", chat_history)
-        if matches:
-            return f"你之前提到你叫{matches[-1]}。"
+        name = self._extract_name_from_text(chat_history)
+        if name:
+            return f"根据历史对话，你的名字是{name}。"
         return "我暂时无法从历史对话中确认你的名字。"
+
+    def _is_name_query(self, question: str) -> bool:
+        q = question.strip().lower()
+        if not q:
+            return False
+        zh_keywords = ("我叫什么", "我叫啥", "我的名字是什么", "我的名字叫啥", "你记得我叫", "我是谁")
+        en_keywords = ("what is my name", "who am i", "do you remember my name")
+        return any(k in question for k in zh_keywords) or any(k in q for k in en_keywords)
+
+    def _extract_name_from_text(self, text: str) -> str | None:
+        if not text:
+            return None
+
+        patterns = [
+            r"(?:我叫|我的名字是|我的名字叫)([A-Za-z0-9_\u4e00-\u9fff]{1,20})",
+            r"(?:my name is|i am)\s+([A-Za-z][A-Za-z0-9_\-]{0,29})",
+        ]
+        for pattern in patterns:
+            matches = re.findall(pattern, text, flags=re.IGNORECASE)
+            if matches:
+                return str(matches[-1]).strip()
+        return None
+
+    def _try_ack_profile_input(self, question: str) -> str | None:
+        q = question.strip()
+        if not q or self._is_name_query(q):
+            return None
+        name = self._extract_name_from_text(q)
+        if not name:
+            return None
+        return f"好的，我记住了，你叫{name}。"
 
     def clear_session_memory(self, app_id: str, session_id: str) -> Dict[str, Any]:
         app = self._normalize_app_id(app_id)
@@ -368,27 +415,34 @@ class RAGService:
 要求：
 1. 若问题是会话相关（例如“我叫什么名字”“你刚才说了什么”），优先根据历史对话回答。
 2. 若问题是文档知识相关，优先依据参考文档回答，可结合历史对话做指代消解。
-3. 若两类信息都不足，再回答：“根据当前会话记忆和文档内容，我无法回答这个问题。”
-4. 禁止编造不存在的信息，回答简洁直接。
+3. 若用户是在补充个人信息（如“我叫xx”），先确认“已记住”，不要转为文档总结。
+4. 若两类信息都不足，再回答：“根据当前会话记忆和文档内容，我无法回答这个问题。”
+5. 禁止编造不存在的信息，回答简洁直接。
 
 答案：
 """
         )
 
-        llm = ChatOpenAI(
-            model="moonshot-v1-8k",
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            openai_api_base=os.getenv("OPENAI_API_BASE"),
-        )
+        chain_input = {
+            "question": question,
+            "context": context,
+            "chat_history": chat_history,
+        }
 
-        chain = prompt | llm | StrOutputParser()
-        return chain.invoke(
-            {
-                "question": question,
-                "context": context,
-                "chat_history": chat_history,
-            }
-        )
+        for attempt in range(3):
+            try:
+                llm = ChatOpenAI(
+                    model=self._llm_model(),
+                    openai_api_key=os.getenv("OPENAI_API_KEY"),
+                    openai_api_base=os.getenv("OPENAI_API_BASE"),
+                )
+                chain = prompt | llm | StrOutputParser()
+                return chain.invoke(chain_input)
+            except Exception as e:
+                if not self._is_overloaded_error(e) or attempt >= 2:
+                    raise
+                time.sleep(1.2 * (attempt + 1))
+        raise RuntimeError("LLM 调用失败")
 
     def _generate_answer_stream(self, question: str, context_docs: List[Document], chat_history: str) -> Iterator[str]:
         context = "\n\n".join([f"【片段{i + 1}】{doc.page_content}" for i, doc in enumerate(context_docs)])
@@ -412,28 +466,34 @@ class RAGService:
 要求：
 1. 若问题是会话相关（例如“我叫什么名字”“你刚才说了什么”），优先根据历史对话回答。
 2. 若问题是文档知识相关，优先依据参考文档回答，可结合历史对话做指代消解。
-3. 若两类信息都不足，再回答：“根据当前会话记忆和文档内容，我无法回答这个问题。”
-4. 禁止编造不存在的信息，回答简洁直接。
+3. 若用户是在补充个人信息（如“我叫xx”），先确认“已记住”，不要转为文档总结。
+4. 若两类信息都不足，再回答：“根据当前会话记忆和文档内容，我无法回答这个问题。”
+5. 禁止编造不存在的信息，回答简洁直接。
 
 答案：
 """
         )
 
-        llm = ChatOpenAI(
-            model="moonshot-v1-8k",
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
-            openai_api_base=os.getenv("OPENAI_API_BASE"),
-        )
-
-        chain = prompt | llm | StrOutputParser()
-        for chunk in chain.stream(
-            {
-                "question": question,
-                "context": context,
-                "chat_history": chat_history,
-            }
-        ):
-            yield chunk
+        chain_input = {
+            "question": question,
+            "context": context,
+            "chat_history": chat_history,
+        }
+        for attempt in range(3):
+            try:
+                llm = ChatOpenAI(
+                    model=self._llm_model(),
+                    openai_api_key=os.getenv("OPENAI_API_KEY"),
+                    openai_api_base=os.getenv("OPENAI_API_BASE"),
+                )
+                chain = prompt | llm | StrOutputParser()
+                for chunk in chain.stream(chain_input):
+                    yield chunk
+                return
+            except Exception as e:
+                if not self._is_overloaded_error(e) or attempt >= 2:
+                    raise
+                time.sleep(1.2 * (attempt + 1))
 
     def _retrieve_scored_docs(self, app_id: str, question: str) -> List[Tuple[Document, float]]:
         vector_store = self._vector_store_for(app_id)
@@ -523,5 +583,20 @@ class RAGService:
             session_id=session_id,
             storage_path=str(memory_dir),
             max_tokens=1000,
-            model="moonshot-v1-8k",
+            model=self._llm_model(),
         )
+
+    @staticmethod
+    def _is_overloaded_error(error: Exception) -> bool:
+        text = str(error).lower()
+        return "429" in text or "engine_overloaded_error" in text or "overloaded" in text
+
+    @staticmethod
+    def _friendly_llm_error(error: Exception) -> str:
+        if RAGService._is_overloaded_error(error):
+            return "模型服务当前繁忙（429），已自动重试。请稍后再试，或切换到更轻量模型。"
+        return f"回答问题失败: {str(error)}"
+
+    @staticmethod
+    def _llm_model() -> str:
+        return os.getenv("RAG_LLM_MODEL", "moonshot-v1-8k")
