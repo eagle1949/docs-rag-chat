@@ -37,7 +37,9 @@ class Router:
         # RAG 相关路由
         bp.add_url_rule("/rag", methods=["GET"], view_func=self.rag_handler.rag_page)
         bp.add_url_rule("/rag/documents/upload", methods=["POST"], view_func=self.rag_handler.upload_document)
+        bp.add_url_rule("/rag/url/upload", methods=["POST"], view_func=self.rag_handler.upload_url)
         bp.add_url_rule("/rag/ask", methods=["POST"], view_func=self.rag_handler.ask_question)
+        bp.add_url_rule("/rag/ask/stream", methods=["POST"], view_func=self.rag_handler.ask_question_stream)
         bp.add_url_rule("/rag/documents", methods=["GET"], view_func=self.rag_handler.list_documents)
 
         # 按 app_id 隔离的 RAG 路由
@@ -45,6 +47,11 @@ class Router:
             "/apps/<string:app_id>/rag/documents/upload",
             methods=["POST"],
             view_func=self.rag_handler.upload_document,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/url/upload",
+            methods=["POST"],
+            view_func=self.rag_handler.upload_url,
         )
         bp.add_url_rule(
             "/apps/<string:app_id>/rag/documents",
@@ -60,6 +67,11 @@ class Router:
             "/apps/<string:app_id>/rag/ask",
             methods=["POST"],
             view_func=self.rag_handler.ask_question,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/ask/stream",
+            methods=["POST"],
+            view_func=self.rag_handler.ask_question_stream,
         )
         bp.add_url_rule(
             "/apps/<string:app_id>/rag/sessions/<string:session_id>/memory",

@@ -1,10 +1,11 @@
 ﻿import { computed, ref } from 'vue'
 import {
-  askQuestion,
+  askQuestionStream,
   clearSessionMemory,
   deleteDocument,
   listDocuments,
   uploadDocument,
+  uploadUrlDocument,
   type DocumentItem,
   type SourceItem,
 } from '@/api/rag'
@@ -80,6 +81,31 @@ export function useRAG() {
     }
   }
 
+  const handleUrlUpload = async (url: string) => {
+    const normalized = url.trim()
+    if (!normalized) {
+      Message.warning('请输入链接')
+      return false
+    }
+
+    try {
+      isUploading.value = true
+      const response = await uploadUrlDocument(appId.value, { url: normalized })
+      if (response.code === 'success') {
+        await loadDocuments()
+        Message.success('链接解析并入库成功')
+        return true
+      }
+      Message.error(response.data?.message || response.message || '链接解析失败')
+      return false
+    } catch (error: any) {
+      Message.error(`链接解析失败: ${error.message || '未知错误'}`)
+      return false
+    } finally {
+      isUploading.value = false
+    }
+  }
+
   const handleDeleteDocument = async (documentId: string) => {
     try {
       const response = await deleteDocument(appId.value, documentId)
@@ -107,22 +133,45 @@ export function useRAG() {
 
     try {
       isAsking.value = true
-      const response = await askQuestion(appId.value, {
+      const qaItem: QAItem = {
         question,
-        session_id: sessionId.value,
-      })
-
-      if (response.code === 'success') {
-        qaHistory.value.push({
-          question,
-          answer: response.data.answer,
-          sources: response.data.sources || [],
-          createdAt: new Date().toISOString(),
-        })
-        Message.success('回答生成成功')
-      } else {
-        Message.error(response.message || '提问失败')
+        answer: '',
+        sources: [],
+        createdAt: new Date().toISOString(),
       }
+      qaHistory.value.push(qaItem)
+      const qaIndex = qaHistory.value.length - 1
+
+      await askQuestionStream(
+        appId.value,
+        {
+          question,
+          session_id: sessionId.value,
+        },
+        {
+          onToken: (token: string) => {
+            const current = qaHistory.value[qaIndex]
+            if (!current) return
+            current.answer += token
+          },
+          onDone: (payload) => {
+            const current = qaHistory.value[qaIndex]
+            if (!current) return
+            current.sources = payload.sources || []
+          },
+          onError: (message: string) => {
+            const current = qaHistory.value[qaIndex]
+            if (!current) return
+            current.answer = current.answer || message
+          },
+        },
+      )
+
+      const current = qaHistory.value[qaIndex]
+      if (current && !current.answer.trim()) {
+        current.answer = '根据当前会话记忆和文档内容，我无法回答这个问题。'
+      }
+      Message.success('回答生成成功')
     } catch (error: any) {
       Message.error(`提问失败: ${error.message || '未知错误'}`)
     } finally {
@@ -162,6 +211,7 @@ export function useRAG() {
     loadDocuments,
     switchApp,
     handleFileUpload,
+    handleUrlUpload,
     handleDeleteDocument,
     handleAskQuestion,
     clearConversation,

@@ -14,7 +14,8 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Iterator, Tuple
+from urllib.parse import urlparse
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
@@ -116,6 +117,53 @@ class RAGService:
                 "message": "文档上传成功并建立索引",
             }
 
+    def upload_url_document(self, app_id: str, url: str) -> Dict[str, Any]:
+        app = self._normalize_app_id(app_id)
+        lock = self._lock_for(app)
+        with lock:
+            documents = self.loader.load_url(url)
+            split_docs = self.splitter.split_documents(documents)
+
+            document_id = f"doc_{uuid.uuid4().hex[:20]}"
+            parsed = urlparse(url)
+            display_name = parsed.netloc + (parsed.path if parsed.path else "")
+            display_name = display_name[:120] if display_name else url
+
+            for idx, doc in enumerate(split_docs):
+                doc.metadata["app_id"] = app
+                doc.metadata["document_id"] = document_id
+                doc.metadata["source"] = display_name
+                doc.metadata["stored_source"] = ""
+                doc.metadata["source_url"] = url
+                doc.metadata["chunk_id"] = idx
+
+            vector_store = self._vector_store_for(app)
+            vector_ids = vector_store.add_documents(split_docs)
+
+            approx_size = sum(len(doc.page_content or "") for doc in split_docs)
+            record = {
+                "document_id": document_id,
+                "filename": display_name,
+                "stored_filename": "",
+                "source_url": url,
+                "size": approx_size,
+                "chunks": len(split_docs),
+                "vector_ids": vector_ids,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            meta = self._load_documents_meta(app)
+            meta.setdefault("documents", []).append(record)
+            self._save_documents_meta(app, meta)
+
+            return {
+                "document_id": document_id,
+                "filename": display_name,
+                "size": approx_size,
+                "chunks": len(split_docs),
+                "message": "链接解析成功并建立索引",
+            }
+
     def delete_document(self, app_id: str, document_id: str) -> Dict[str, Any]:
         app = self._normalize_app_id(app_id)
 
@@ -132,9 +180,11 @@ class RAGService:
                 vector_store = self._vector_store_for(app)
                 vector_store.delete_documents(vector_ids)
 
-            file_path = self._documents_dir(app) / target.get("stored_filename", "")
-            if file_path.exists():
-                file_path.unlink()
+            stored_filename = target.get("stored_filename", "")
+            if stored_filename:
+                file_path = self._documents_dir(app) / stored_filename
+                if file_path.exists():
+                    file_path.unlink()
 
             meta["documents"] = [x for x in documents if x.get("document_id") != document_id]
             self._save_documents_meta(app, meta)
@@ -211,6 +261,53 @@ class RAGService:
             }
         except Exception as e:
             raise Exception(f"回答问题失败: {str(e)}")
+
+    def ask_question_stream(self, app_id: str, question: str, session_id: str) -> Iterator[Dict[str, Any]]:
+        """
+        SSE 流式问答：逐 token 输出，最后输出 done 事件（带 sources）。
+        """
+        app = self._normalize_app_id(app_id)
+        session = session_id.strip() or "default"
+        memory = self._memory_for(app, session)
+        chat_history = memory.load_memory_variables().get("chat_history", "")
+
+        memory_answer = self._try_answer_from_memory(question, chat_history)
+        if memory_answer:
+            memory.save_context(question, memory_answer)
+            yield {"event": "token", "data": memory_answer}
+            yield {"event": "done", "data": {"session_id": session, "sources": []}}
+            return
+
+        try:
+            scored_docs = self._retrieve_scored_docs(app, question)
+            if not scored_docs and not chat_history:
+                final_answer = "抱歉，没有找到相关的文档内容。请确保已上传相关文档。"
+                memory.save_context(question, final_answer)
+                yield {"event": "token", "data": final_answer}
+                yield {"event": "done", "data": {"session_id": session, "sources": []}}
+                return
+
+            sources = self._prepare_sources(scored_docs)
+            context_docs = [doc for doc, _ in scored_docs]
+            full_answer = ""
+            for chunk in self._generate_answer_stream(
+                question=question,
+                context_docs=context_docs,
+                chat_history=chat_history,
+            ):
+                if not chunk:
+                    continue
+                full_answer += chunk
+                yield {"event": "token", "data": chunk}
+
+            if not full_answer.strip():
+                full_answer = "根据当前会话记忆和文档内容，我无法回答这个问题。"
+                yield {"event": "token", "data": full_answer}
+
+            memory.save_context(question, full_answer)
+            yield {"event": "done", "data": {"session_id": session, "sources": sources}}
+        except Exception as e:
+            yield {"event": "error", "data": {"message": f"流式回答失败: {str(e)}"}}
 
     def _try_answer_from_memory(self, question: str, chat_history: str) -> str | None:
         """优先处理显式会话类问题，避免被文档检索噪音干扰。"""
@@ -292,6 +389,61 @@ class RAGService:
                 "chat_history": chat_history,
             }
         )
+
+    def _generate_answer_stream(self, question: str, context_docs: List[Document], chat_history: str) -> Iterator[str]:
+        context = "\n\n".join([f"【片段{i + 1}】{doc.page_content}" for i, doc in enumerate(context_docs)])
+        if not context:
+            context = "（当前问题未检索到文档片段）"
+
+        prompt = ChatPromptTemplate.from_template(
+            """
+你是一个“文档问答 + 多轮会话”助手。你有两类信息源：
+1) 会话记忆（chat_history）：历史摘要与最近对话
+2) 参考文档（context）：本轮检索到的文档片段
+
+历史对话：
+{chat_history}
+
+参考内容：
+{context}
+
+问题：{question}
+
+要求：
+1. 若问题是会话相关（例如“我叫什么名字”“你刚才说了什么”），优先根据历史对话回答。
+2. 若问题是文档知识相关，优先依据参考文档回答，可结合历史对话做指代消解。
+3. 若两类信息都不足，再回答：“根据当前会话记忆和文档内容，我无法回答这个问题。”
+4. 禁止编造不存在的信息，回答简洁直接。
+
+答案：
+"""
+        )
+
+        llm = ChatOpenAI(
+            model="moonshot-v1-8k",
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            openai_api_base=os.getenv("OPENAI_API_BASE"),
+        )
+
+        chain = prompt | llm | StrOutputParser()
+        for chunk in chain.stream(
+            {
+                "question": question,
+                "context": context,
+                "chat_history": chat_history,
+            }
+        ):
+            yield chunk
+
+    def _retrieve_scored_docs(self, app_id: str, question: str) -> List[Tuple[Document, float]]:
+        vector_store = self._vector_store_for(app_id)
+        results = vector_store.similarity_search_with_score(query=question, k=3)
+        scored_docs: List[Tuple[Document, float]] = []
+        for doc, distance in results:
+            confidence = 1.0 / (1.0 + float(distance))
+            if confidence >= 0.2:
+                scored_docs.append((doc, confidence))
+        return scored_docs
 
     def _prepare_sources(self, documents_with_scores: List[tuple[Document, float]]) -> List[Dict[str, Any]]:
         sources: List[Dict[str, Any]] = []

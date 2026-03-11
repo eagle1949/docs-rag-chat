@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { Message } from '@arco-design/web-vue'
+import MarkdownIt from 'markdown-it'
 import { useRAG } from '@/composables/useRAG'
 
 const {
@@ -14,6 +15,7 @@ const {
   loadDocuments,
   switchApp,
   handleFileUpload,
+  handleUrlUpload,
   handleDeleteDocument,
   handleAskQuestion,
   clearConversation,
@@ -21,8 +23,18 @@ const {
 
 const questionInput = ref('')
 const selectedFile = ref<File | null>(null)
+const urlInput = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+const historyListRef = ref<HTMLElement | null>(null)
 const appInput = ref(appId.value)
+
+const md = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: true,
+})
+
+const renderMarkdown = (content: string) => md.render(content || '')
 
 const formatFileSize = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`
 
@@ -32,8 +44,8 @@ const handleFileSelect = (event: Event) => {
   if (!files || files.length === 0) return
 
   const file = files[0]
-  if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
-    Message.error('仅支持 .md 和 .txt 文件')
+  if (!file.name.endsWith('.md') && !file.name.endsWith('.txt') && !file.name.endsWith('.pdf')) {
+    Message.error('仅支持 .md / .txt / .pdf 文件')
     return
   }
   selectedFile.value = file
@@ -58,6 +70,13 @@ const handleUploadClick = async () => {
   }
 }
 
+const handleParseUrlClick = async () => {
+  const ok = await handleUrlUpload(urlInput.value)
+  if (ok) {
+    urlInput.value = ''
+  }
+}
+
 const handleSendQuestion = async () => {
   if (!questionInput.value.trim()) {
     Message.warning('请输入问题')
@@ -77,8 +96,29 @@ const documentCountText = computed(() => {
   return `${uploadedDocuments.value.length}`
 })
 
+const scrollHistoryToBottom = () => {
+  nextTick(() => {
+    if (!historyListRef.value) return
+    historyListRef.value.scrollTo({
+      top: historyListRef.value.scrollHeight,
+      behavior: 'smooth',
+    })
+  })
+}
+
+const isStreamingAnswer = (index: number) => isAsking.value && index === qaHistory.value.length - 1
+
+watch(
+  qaHistory,
+  () => {
+    scrollHistoryToBottom()
+  },
+  { deep: true },
+)
+
 onMounted(async () => {
   await loadDocuments()
+  scrollHistoryToBottom()
 })
 </script>
 
@@ -104,7 +144,7 @@ onMounted(async () => {
         <input
           ref="fileInput"
           type="file"
-          accept=".md,.txt"
+          accept=".md,.txt,.pdf"
           style="display: none"
           @change="handleFileSelect"
         />
@@ -114,6 +154,17 @@ onMounted(async () => {
           <span class="file-name">{{ selectedFile.name }}</span>
           <button class="primary-btn" :disabled="isUploading" @click="handleUploadClick">
             {{ isUploading ? 'Uploading...' : 'Upload' }}
+          </button>
+        </div>
+
+        <div class="url-upload">
+          <input
+            v-model="urlInput"
+            class="text-input"
+            placeholder="https://example.com/article"
+          />
+          <button class="secondary-btn" :disabled="isUploading || !urlInput.trim()" @click="handleParseUrlClick">
+            Parse URL
           </button>
         </div>
       </div>
@@ -143,15 +194,19 @@ onMounted(async () => {
       <div class="qa-display">
         <div v-if="qaHistory.length === 0" class="empty-state">Start asking questions...</div>
 
-        <div v-else class="history-list">
+        <div v-else ref="historyListRef" class="history-list">
           <div v-for="(item, index) in qaHistory" :key="`${item.createdAt}-${index}`" class="history-item">
             <div class="question-box">
               <label>You</label>
-              <div class="content">{{ item.question }}</div>
+              <div class="content markdown-body" v-html="renderMarkdown(item.question)"></div>
             </div>
             <div class="answer-box">
               <label>AI</label>
-              <div class="content">{{ item.answer }}</div>
+              <div
+                class="content markdown-body"
+                :class="{ typing: isStreamingAnswer(index) }"
+                v-html="renderMarkdown(item.answer)"
+              ></div>
             </div>
           </div>
         </div>
@@ -206,11 +261,13 @@ onMounted(async () => {
 
 <style scoped>
 .rag-container {
-  display: flex;
-  min-height: calc(100vh - 120px);
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(520px, 2fr) minmax(280px, 1fr);
+  height: calc(100vh - 120px);
   background-color: #f5f5f5;
   padding: 20px;
   gap: 20px;
+  min-height: 0;
 }
 
 .left-panel,
@@ -220,18 +277,18 @@ onMounted(async () => {
   border: 1px solid #ddd;
   border-radius: 8px;
   padding: 16px;
+  min-width: 0;
+  min-height: 0;
 }
 
-.left-panel {
-  flex: 1;
+.left-panel,
+.right-panel {
+  overflow-y: auto;
 }
 
 .middle-panel {
-  flex: 2;
-}
-
-.right-panel {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-header {
@@ -250,7 +307,8 @@ onMounted(async () => {
 .upload-section,
 .documents-section,
 .input-section {
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  margin-top: 12px;
 }
 
 .field-label {
@@ -266,6 +324,11 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 
+.inline-field .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .text-input,
 .question-input {
   width: 100%;
@@ -278,6 +341,12 @@ onMounted(async () => {
 .input-bar {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.question-input {
+  min-width: 0;
+  flex: 1;
 }
 
 .primary-btn,
@@ -310,6 +379,22 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+}
+
+.url-upload {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.url-upload .text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.url-upload .secondary-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .file-name {
@@ -350,14 +435,18 @@ onMounted(async () => {
 }
 
 .qa-display {
-  min-height: 340px;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .history-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 480px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -375,7 +464,6 @@ onMounted(async () => {
 
 .content {
   margin-top: 4px;
-  white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.6;
 }
@@ -392,6 +480,17 @@ onMounted(async () => {
   border-radius: 4px;
 }
 
+.answer-box .content.typing::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.1em;
+  background: #111827;
+  animation: blink-caret 1s step-end infinite;
+}
+
 .inline-actions {
   margin-top: 10px;
 }
@@ -400,6 +499,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+  height: calc(100% - 54px);
 }
 
 .reference-item {
@@ -427,6 +529,78 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
+.markdown-body {
+  overflow-x: auto;
+  color: #1e293b;
+}
+
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.markdown-body :deep(p) {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(code) {
+  padding: 0.2em 0.4em;
+  font-size: 0.9em;
+  background-color: rgba(175, 184, 193, 0.2);
+  border-radius: 3px;
+  font-family: Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.markdown-body :deep(pre) {
+  padding: 10px;
+  overflow: auto;
+  font-size: 0.85em;
+  line-height: 1.5;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  background: #f3f4f6;
+}
+
+.markdown-body :deep(pre code) {
+  padding: 0;
+  background-color: transparent;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  padding-left: 1.5em;
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.markdown-body :deep(blockquote) {
+  padding: 0 1em;
+  color: #64748b;
+  border-left: 3px solid #e2e8f0;
+  margin: 12px 0;
+}
+
+.markdown-body :deep(a) {
+  color: #0969da;
+  text-decoration: none;
+}
+
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
 .empty-state,
 .loading-state {
   color: #999;
@@ -434,9 +608,31 @@ onMounted(async () => {
   text-align: center;
 }
 
+@keyframes blink-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
 @media (max-width: 1024px) {
   .rag-container {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 120px);
+  }
+}
+
+@media (max-width: 1360px) {
+  .rag-container {
+    grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr);
+  }
+
+  .right-panel {
+    grid-column: 1 / -1;
   }
 }
 </style>
