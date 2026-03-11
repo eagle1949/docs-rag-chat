@@ -1,36 +1,77 @@
-import { ref } from 'vue'
-import { uploadDocument, askQuestion, type DocumentItem, type SourceItem } from '@/api/rag'
+﻿import { computed, ref } from 'vue'
+import {
+  askQuestion,
+  clearSessionMemory,
+  deleteDocument,
+  listDocuments,
+  uploadDocument,
+  type DocumentItem,
+  type SourceItem,
+} from '@/api/rag'
 import { Message } from '@arco-design/web-vue'
 
+export interface QAItem {
+  question: string
+  answer: string
+  sources: SourceItem[]
+  createdAt: string
+}
+
 export function useRAG() {
-  // 状态管理
+  const appId = ref('default')
+  const sessionId = ref(`session_${Date.now()}`)
+
   const uploadedDocuments = ref<DocumentItem[]>([])
-  const currentQuestion = ref('')
-  const currentAnswer = ref('')
-  const currentSources = ref<SourceItem[]>([])
+  const qaHistory = ref<QAItem[]>([])
+
   const isUploading = ref(false)
   const isAsking = ref(false)
+  const isLoadingDocuments = ref(false)
 
-  // 上传文档
+  const currentQuestion = computed(() => {
+    const last = qaHistory.value[qaHistory.value.length - 1]
+    return last?.question || ''
+  })
+
+  const currentAnswer = computed(() => {
+    const last = qaHistory.value[qaHistory.value.length - 1]
+    return last?.answer || ''
+  })
+
+  const currentSources = computed(() => {
+    const last = qaHistory.value[qaHistory.value.length - 1]
+    return last?.sources || []
+  })
+
+  const loadDocuments = async () => {
+    try {
+      isLoadingDocuments.value = true
+      const response = await listDocuments(appId.value)
+      if (response.code === 'success') {
+        uploadedDocuments.value = response.data.documents || []
+      } else {
+        Message.error(response.message || '获取文档列表失败')
+      }
+    } catch (error: any) {
+      Message.error(`获取文档列表失败: ${error.message || '未知错误'}`)
+    } finally {
+      isLoadingDocuments.value = false
+    }
+  }
+
   const handleFileUpload = async (file: File) => {
     try {
       isUploading.value = true
-
-      const response = await uploadDocument(file)
+      const response = await uploadDocument(appId.value, file)
 
       if (response.code === 'success') {
-        uploadedDocuments.value.push({
-          filename: response.data.filename,
-          size: response.data.size,
-          chunks: response.data.chunks,
-        })
-
+        await loadDocuments()
         Message.success(`成功上传 ${file.name}`)
         return true
-      } else {
-        Message.error(response.data?.message || '上传失败')
-        return false
       }
+
+      Message.error(response.data?.message || response.message || '上传失败')
+      return false
     } catch (error: any) {
       Message.error(`上传失败: ${error.message || '未知错误'}`)
       return false
@@ -39,7 +80,20 @@ export function useRAG() {
     }
   }
 
-  // 提问
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      const response = await deleteDocument(appId.value, documentId)
+      if (response.code === 'success') {
+        uploadedDocuments.value = uploadedDocuments.value.filter((item) => item.document_id !== documentId)
+        Message.success('文档删除成功')
+      } else {
+        Message.error(response.data?.message || response.message || '文档删除失败')
+      }
+    } catch (error: any) {
+      Message.error(`文档删除失败: ${error.message || '未知错误'}`)
+    }
+  }
+
   const handleAskQuestion = async (question: string) => {
     if (!question.trim()) {
       Message.warning('请输入问题')
@@ -53,18 +107,21 @@ export function useRAG() {
 
     try {
       isAsking.value = true
-      currentQuestion.value = question
-      currentAnswer.value = ''
-      currentSources.value = []
-
-      const response = await askQuestion({ question })
+      const response = await askQuestion(appId.value, {
+        question,
+        session_id: sessionId.value,
+      })
 
       if (response.code === 'success') {
-        currentAnswer.value = response.data.answer
-        currentSources.value = response.data.sources
+        qaHistory.value.push({
+          question,
+          answer: response.data.answer,
+          sources: response.data.sources || [],
+          createdAt: new Date().toISOString(),
+        })
         Message.success('回答生成成功')
       } else {
-        Message.error(response.data?.message || '提问失败')
+        Message.error(response.message || '提问失败')
       }
     } catch (error: any) {
       Message.error(`提问失败: ${error.message || '未知错误'}`)
@@ -73,27 +130,40 @@ export function useRAG() {
     }
   }
 
-  // 清空所有文档
-  const clearDocuments = () => {
-    uploadedDocuments.value = []
-    currentQuestion.value = ''
-    currentAnswer.value = ''
-    currentSources.value = []
-    Message.info('已清空所有文档')
+  const clearConversation = async () => {
+    try {
+      await clearSessionMemory(appId.value, sessionId.value)
+    } catch {
+      // 后端清理失败不影响前端本地清空
+    }
+
+    qaHistory.value = []
+    Message.info('会话已清空')
+  }
+
+  const switchApp = async (nextAppId: string) => {
+    const normalized = nextAppId.trim() || 'default'
+    appId.value = normalized
+    qaHistory.value = []
+    await loadDocuments()
   }
 
   return {
-    // 状态
+    appId,
+    sessionId,
     uploadedDocuments,
+    qaHistory,
     currentQuestion,
     currentAnswer,
     currentSources,
     isUploading,
     isAsking,
-
-    // 方法
+    isLoadingDocuments,
+    loadDocuments,
+    switchApp,
     handleFileUpload,
+    handleDeleteDocument,
     handleAskQuestion,
-    clearDocuments,
+    clearConversation,
   }
 }

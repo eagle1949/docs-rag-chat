@@ -6,3 +6,5 @@ venv/*
 .pyc
 __pycache__/
 *.py[cod]
+data/rag/
+data/

@@ -1,52 +1,48 @@
-<script setup lang="ts">
-import { ref, computed } from 'vue'
+﻿<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import { useRAG } from '@/composables/useRAG'
 
-// 使用RAG composable
 const {
+  appId,
+  sessionId,
   uploadedDocuments,
-  currentQuestion,
-  currentAnswer,
-  currentSources,
+  qaHistory,
   isUploading,
   isAsking,
+  isLoadingDocuments,
+  loadDocuments,
+  switchApp,
   handleFileUpload,
+  handleDeleteDocument,
   handleAskQuestion,
-  clearDocuments,
+  clearConversation,
 } = useRAG()
 
-// 本地表单状态
 const questionInput = ref('')
 const selectedFile = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const appInput = ref(appId.value)
 
-// 格式化文件大小
-const formatFileSize = (bytes: number) => {
-  return `${(bytes / 1024).toFixed(1)} KB`
-}
+const formatFileSize = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB`
 
-// 处理文件选择
 const handleFileSelect = (event: Event) => {
   const target = event.target as HTMLInputElement
   const files = target.files
+  if (!files || files.length === 0) return
 
-  if (files && files.length > 0) {
-    const file = files[0]
-    if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
-      Message.error('仅支持 .md 和 .txt 文件')
-      return
-    }
-    selectedFile.value = file
+  const file = files[0]
+  if (!file.name.endsWith('.md') && !file.name.endsWith('.txt')) {
+    Message.error('仅支持 .md 和 .txt 文件')
+    return
   }
+  selectedFile.value = file
 }
 
-// 触发文件选择
 const triggerFileSelect = () => {
   fileInput.value?.click()
 }
 
-// 处理文件上传
 const handleUploadClick = async () => {
   if (!selectedFile.value) {
     Message.warning('请先选择文件')
@@ -56,10 +52,12 @@ const handleUploadClick = async () => {
   const success = await handleFileUpload(selectedFile.value)
   if (success) {
     selectedFile.value = null
+    if (fileInput.value) {
+      fileInput.value.value = ''
+    }
   }
 }
 
-// 处理提问
 const handleSendQuestion = async () => {
   if (!questionInput.value.trim()) {
     Message.warning('请输入问题')
@@ -70,23 +68,36 @@ const handleSendQuestion = async () => {
   questionInput.value = ''
 }
 
-// 文档列表空状态提示
-const emptyDocumentsText = computed(() => {
-  return uploadedDocuments.value.length === 0 ? '暂无文档' : ''
+const applyAppId = async () => {
+  await switchApp(appInput.value)
+}
+
+const documentCountText = computed(() => {
+  if (isLoadingDocuments.value) return 'Loading...'
+  return `${uploadedDocuments.value.length}`
 })
 
-// 来源列表空状态提示
-const emptySourcesText = computed(() => {
-  return currentSources.value.length === 0 ? '暂无参考来源' : ''
+onMounted(async () => {
+  await loadDocuments()
 })
 </script>
 
 <template>
   <div class="rag-container">
-    <!-- 左侧：文档管理区 -->
     <div class="left-panel">
       <div class="panel-header">
-        <h2 class="panel-title">Document Q&A</h2>
+        <h2 class="panel-title">Knowledge Base</h2>
+      </div>
+
+      <div class="config-section">
+        <label class="field-label">App ID</label>
+        <div class="inline-field">
+          <input v-model="appInput" class="text-input" placeholder="default" />
+          <button class="secondary-btn" @click="applyAppId">Apply</button>
+        </div>
+
+        <label class="field-label">Session ID</label>
+        <input v-model="sessionId" class="text-input" placeholder="session_xxx" />
       </div>
 
       <div class="upload-section">
@@ -97,78 +108,55 @@ const emptySourcesText = computed(() => {
           style="display: none"
           @change="handleFileSelect"
         />
-        <div class="upload-btn" @click="triggerFileSelect">
-          <icon-upload />
-          <span>Upload Files</span>
-        </div>
+        <button class="primary-btn" @click="triggerFileSelect">Choose File</button>
 
         <div v-if="selectedFile" class="selected-file">
           <span class="file-name">{{ selectedFile.name }}</span>
-          <button class="upload-action-btn" :disabled="isUploading" @click="handleUploadClick">
+          <button class="primary-btn" :disabled="isUploading" @click="handleUploadClick">
             {{ isUploading ? 'Uploading...' : 'Upload' }}
           </button>
         </div>
-
-        <p class="upload-hint">Select or upload your documents below</p>
       </div>
 
       <div class="documents-section">
-        <h3 class="section-title">Documents ({{ uploadedDocuments.length }})</h3>
+        <h3 class="section-title">Documents ({{ documentCountText }})</h3>
 
-        <div v-if="uploadedDocuments.length === 0" class="empty-state">
-          <icon-file />
-          <p>No documents uploaded</p>
-        </div>
+        <div v-if="uploadedDocuments.length === 0" class="empty-state">No documents</div>
 
         <div v-else class="documents-list">
-          <div
-            v-for="(doc, index) in uploadedDocuments"
-            :key="index"
-            class="document-item"
-          >
-            <div class="document-info">
-              <icon-file />
-              <div class="document-details">
-                <div class="document-name">{{ doc.filename }}</div>
-                <div class="document-meta">
-                  {{ formatFileSize(doc.size) }} · {{ doc.chunks }} chunks
-                </div>
-              </div>
+          <div v-for="doc in uploadedDocuments" :key="doc.document_id" class="document-item">
+            <div class="document-name">{{ doc.filename }}</div>
+            <div class="document-meta">{{ formatFileSize(doc.size) }} | {{ doc.chunks }} chunks</div>
+            <div class="document-actions">
+              <button class="danger-btn" @click="handleDeleteDocument(doc.document_id)">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="middle-panel">
+      <div class="panel-header">
+        <h2 class="panel-title">Multi-turn Chat</h2>
+      </div>
+
+      <div class="qa-display">
+        <div v-if="qaHistory.length === 0" class="empty-state">Start asking questions...</div>
+
+        <div v-else class="history-list">
+          <div v-for="(item, index) in qaHistory" :key="`${item.createdAt}-${index}`" class="history-item">
+            <div class="question-box">
+              <label>You</label>
+              <div class="content">{{ item.question }}</div>
+            </div>
+            <div class="answer-box">
+              <label>AI</label>
+              <div class="content">{{ item.answer }}</div>
             </div>
           </div>
         </div>
 
-        <button v-if="uploadedDocuments.length > 0" class="clear-btn" @click="clearDocuments">
-          Clear All
-        </button>
-      </div>
-    </div>
-
-    <!-- 中间：问答交互区 -->
-    <div class="middle-panel">
-      <div class="panel-header">
-        <h2 class="panel-title">Ask a Question</h2>
-      </div>
-
-      <div class="qa-display">
-        <div v-if="currentQuestion" class="question-box">
-          <label>You:</label>
-          <div class="question-content">{{ currentQuestion }}</div>
-        </div>
-
-        <div v-if="currentAnswer || isAsking" class="answer-box">
-          <label>AI:</label>
-          <div v-if="isAsking" class="loading-state">
-            <icon-loading />
-            <span>Thinking...</span>
-          </div>
-          <div v-else class="answer-content">{{ currentAnswer }}</div>
-        </div>
-
-        <div v-if="!currentQuestion && !currentAnswer" class="placeholder-state">
-          <icon-question-circle />
-          <p>Ask a question about your documents...</p>
-        </div>
+        <div v-if="isAsking" class="loading-state">Thinking...</div>
       </div>
 
       <div class="input-section">
@@ -182,40 +170,33 @@ const emptySourcesText = computed(() => {
             @keypress.enter="handleSendQuestion"
           />
           <button
-            class="send-btn"
+            class="primary-btn"
             :disabled="isAsking || !questionInput.trim() || uploadedDocuments.length === 0"
             @click="handleSendQuestion"
           >
-            <icon-send v-if="!isAsking" />
-            <icon-loading v-else />
-            <span>{{ isAsking ? 'Sending...' : 'Send' }}</span>
+            {{ isAsking ? 'Sending...' : 'Send' }}
           </button>
         </div>
-        <p v-if="uploadedDocuments.length === 0" class="input-hint">
-          Please upload documents first
-        </p>
+        <div class="inline-actions">
+          <button class="secondary-btn" @click="clearConversation">Clear Session</button>
+        </div>
       </div>
     </div>
 
-    <!-- 右侧：参考来源区 -->
     <div class="right-panel">
       <div class="panel-header">
-        <h2 class="panel-title">References ({{ currentSources.length }})</h2>
+        <h2 class="panel-title">References</h2>
       </div>
 
-      <div v-if="currentSources.length === 0" class="empty-state">
-        <icon-bookmark />
-        <p>No references available</p>
-      </div>
-
+      <div v-if="qaHistory.length === 0" class="empty-state">No references</div>
       <div v-else class="references-list">
-        <div v-for="(source, index) in currentSources" :key="index" class="reference-item">
-          <div class="reference-header">
-            <div class="reference-title">Source {{ index + 1 }}: {{ source.filename }}</div>
-            <div class="reference-meta">
-              Score: {{ (source.score * 100).toFixed(1) }}% | Chunk: {{ source.chunk_id }}
-            </div>
-          </div>
+        <div
+          v-for="(source, index) in qaHistory[qaHistory.length - 1].sources"
+          :key="`${source.document_id}-${index}`"
+          class="reference-item"
+        >
+          <div class="reference-title">{{ source.filename }} (chunk {{ source.chunk_id }})</div>
+          <div class="reference-meta">Score: {{ (source.score * 100).toFixed(1) }}%</div>
           <div class="reference-content">{{ source.content }}</div>
         </div>
       </div>
@@ -232,162 +213,131 @@ const emptySourcesText = computed(() => {
   gap: 20px;
 }
 
-/* 左侧面板 */
+.left-panel,
+.middle-panel,
+.right-panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+}
+
 .left-panel {
   flex: 1;
-  background-color: white;
-  border-radius: 8px;
-  padding: 20px;
-  border: 1px solid #ddd;
 }
 
-/* 中间面板 */
 .middle-panel {
   flex: 2;
-  background-color: white;
-  border-radius: 8px;
-  padding: 20px;
-  border: 1px solid #ddd;
 }
 
-/* 右侧面板 */
 .right-panel {
   flex: 1;
-  background-color: white;
-  border-radius: 8px;
-  padding: 20px;
-  border: 1px solid #ddd;
 }
 
-/* 通用样式 */
 .panel-header {
-  margin-bottom: 20px;
-  padding-bottom: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
   border-bottom: 2px solid #333;
 }
 
 .panel-title {
-  font-size: 18px;
-  font-weight: bold;
   margin: 0;
-  color: #333;
+  font-size: 18px;
+  font-weight: 700;
 }
 
-/* 上传区域 */
-.upload-section {
-  margin-bottom: 30px;
+.config-section,
+.upload-section,
+.documents-section,
+.input-section {
+  margin-bottom: 16px;
 }
 
-.upload-btn {
+.field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.inline-field {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.text-input,
+.question-input {
   width: 100%;
-  padding: 12px;
-  background-color: #e0e0e0;
   border: 1px solid #ccc;
   border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  padding: 8px;
   font-size: 14px;
-  transition: background-color 0.3s;
 }
 
-.upload-btn:hover {
-  background-color: #d0d0d0;
+.input-bar {
+  display: flex;
+  gap: 8px;
+}
+
+.primary-btn,
+.secondary-btn,
+.danger-btn {
+  border: none;
+  border-radius: 4px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: #165dff;
+  color: #fff;
+}
+
+.secondary-btn {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.danger-btn {
+  background: #ef4444;
+  color: #fff;
 }
 
 .selected-file {
   margin-top: 10px;
-  padding: 10px;
-  background-color: #f0f0f0;
-  border-radius: 4px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.file-name {
-  font-size: 14px;
-  color: #333;
-}
-
-.upload-action-btn {
-  padding: 6px 16px;
-  background-color: #165dff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background-color 0.3s;
-}
-
-.upload-action-btn:hover:not(:disabled) {
-  background-color: #0e42d2;
-}
-
-.upload-action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.upload-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #666;
-  text-align: center;
-}
-
-/* 文档列表 */
-.documents-section {
-  margin-top: 20px;
-}
-
-.section-title {
-  font-size: 16px;
-  margin-bottom: 15px;
-  font-weight: 600;
-  color: #333;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #999;
-}
-
-.empty-state svg {
-  font-size: 48px;
-  margin-bottom: 10px;
-  opacity: 0.3;
-}
-
-.documents-list {
-  margin-top: 10px;
-}
-
-.document-item {
-  padding: 10px;
-  border-bottom: 1px solid #eee;
-}
-
-.document-info {
-  display: flex;
-  align-items: flex-start;
   gap: 8px;
 }
 
-.document-details {
-  flex: 1;
+.file-name {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.section-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.documents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.document-item {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
 }
 
 .document-name {
   font-size: 14px;
-  font-weight: 500;
-  color: #333;
+  font-weight: 600;
   margin-bottom: 4px;
-  word-break: break-all;
 }
 
 .document-meta {
@@ -395,177 +345,98 @@ const emptySourcesText = computed(() => {
   color: #666;
 }
 
-.clear-btn {
-  margin-top: 15px;
-  width: 100%;
-  padding: 8px;
-  background-color: #f53f3f;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background-color 0.3s;
+.document-actions {
+  margin-top: 8px;
 }
 
-.clear-btn:hover {
-  background-color: #d91a1a;
-}
-
-/* 问答区域 */
 .qa-display {
-  margin-bottom: 20px;
-  min-height: 300px;
+  min-height: 340px;
 }
 
-.question-box,
-.answer-box {
-  margin-bottom: 20px;
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.history-item {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
 }
 
 .question-box label,
 .answer-box label {
-  font-weight: bold;
-  display: block;
-  margin-bottom: 8px;
-  color: #333;
-  font-size: 14px;
-}
-
-.question-content,
-.answer-content {
-  padding: 12px;
-  background-color: #f9f9f9;
-  border: 1px solid #eee;
-  border-radius: 4px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.question-content {
-  background-color: #e8f4ff;
-  border-color: #bae7ff;
-}
-
-.loading-state {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
+  font-size: 12px;
   color: #666;
 }
 
-.placeholder-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #999;
+.content {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
 }
 
-.placeholder-state svg {
-  font-size: 64px;
-  margin-bottom: 15px;
-  opacity: 0.3;
-}
-
-.placeholder-state p {
-  margin: 0;
-  font-size: 14px;
-}
-
-/* 输入区域 */
-.input-section {
-  margin-top: 20px;
-}
-
-.input-bar {
-  display: flex;
-  gap: 10px;
-}
-
-.question-input {
-  flex: 1;
-  padding: 12px;
-  border: 1px solid #ccc;
+.question-box .content {
+  background: #f0f7ff;
+  padding: 8px;
   border-radius: 4px;
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.3s;
 }
 
-.question-input:focus {
-  border-color: #165dff;
-}
-
-.question-input:disabled {
-  background-color: #f5f5f5;
-  cursor: not-allowed;
-}
-
-.send-btn {
-  padding: 12px 24px;
-  background-color: #165dff;
-  color: white;
-  border: none;
+.answer-box .content {
+  background: #f9fafb;
+  padding: 8px;
   border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: background-color 0.3s;
-  white-space: nowrap;
 }
 
-.send-btn:hover:not(:disabled) {
-  background-color: #0e42d2;
-}
-
-.send-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.input-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #999;
-}
-
-/* 参考来源 */
-.references-list {
+.inline-actions {
   margin-top: 10px;
 }
 
-.reference-item {
-  margin-bottom: 20px;
-  padding: 12px;
-  background-color: #f9f9f9;
-  border-radius: 4px;
-  border: 1px solid #eee;
+.references-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.reference-header {
-  margin-bottom: 8px;
+.reference-item {
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px;
+  background: #fafafa;
 }
 
 .reference-title {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
 }
 
 .reference-meta {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: #666;
+  margin: 4px 0;
 }
 
 .reference-content {
   font-size: 12px;
-  color: #666;
-  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.6;
+}
+
+.empty-state,
+.loading-state {
+  color: #999;
+  padding: 20px 0;
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .rag-container {
+    flex-direction: column;
+  }
 }
 </style>

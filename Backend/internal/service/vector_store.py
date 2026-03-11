@@ -8,7 +8,7 @@
 """
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from langchain_community.embeddings import QianfanEmbeddingsEndpoint
 from langchain_community.vectorstores import FAISS
@@ -106,8 +106,9 @@ class VectorStoreManager:
                 return
 
         try:
-            self.db.add_documents(documents)
+            ids = self.db.add_documents(documents)
             self.save_index()
+            return ids
         except Exception as e:
             raise Exception(f"添加文档到索引失败: {str(e)}")
 
@@ -142,6 +143,39 @@ class VectorStoreManager:
             return results
         except Exception as e:
             raise Exception(f"相似度搜索失败: {str(e)}")
+
+    def similarity_search_with_score(
+        self,
+        query: str,
+        k: int = 3,
+    ) -> List[Tuple[Document, float]]:
+        """带分数的相似度搜索，返回 (Document, distance_score)。"""
+        if self.db is None:
+            if not self._index_exists():
+                raise FileNotFoundError("索引文件不存在，请先上传文档。")
+            self.load_index()
+
+        try:
+            return self.db.similarity_search_with_score(query, k=k)
+        except Exception as e:
+            raise Exception(f"相似度搜索失败: {str(e)}")
+
+    def delete_documents(self, ids: List[str]) -> bool:
+        """按向量 ID 删除文档向量。"""
+        if not ids:
+            return True
+
+        if self.db is None:
+            if not self._index_exists():
+                return True
+            self.load_index()
+
+        try:
+            deleted = self.db.delete(ids=ids)
+            self.save_index()
+            return bool(deleted)
+        except Exception as e:
+            raise Exception(f"删除向量失败: {str(e)}")
 
     def _index_exists(self) -> bool:
         """检查索引文件是否存在"""

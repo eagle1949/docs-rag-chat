@@ -38,6 +38,34 @@ class Router:
         bp.add_url_rule("/rag", methods=["GET"], view_func=self.rag_handler.rag_page)
         bp.add_url_rule("/rag/documents/upload", methods=["POST"], view_func=self.rag_handler.upload_document)
         bp.add_url_rule("/rag/ask", methods=["POST"], view_func=self.rag_handler.ask_question)
+        bp.add_url_rule("/rag/documents", methods=["GET"], view_func=self.rag_handler.list_documents)
+
+        # 按 app_id 隔离的 RAG 路由
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/documents/upload",
+            methods=["POST"],
+            view_func=self.rag_handler.upload_document,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/documents",
+            methods=["GET"],
+            view_func=self.rag_handler.list_documents,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/documents/<string:document_id>",
+            methods=["DELETE"],
+            view_func=self.rag_handler.delete_document,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/ask",
+            methods=["POST"],
+            view_func=self.rag_handler.ask_question,
+        )
+        bp.add_url_rule(
+            "/apps/<string:app_id>/rag/sessions/<string:session_id>/memory",
+            methods=["DELETE"],
+            view_func=self.rag_handler.clear_session_memory,
+        )
 
         # 3.在应用上去注册蓝图
         app.register_blueprint(bp)
