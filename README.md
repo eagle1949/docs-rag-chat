@@ -1,395 +1,182 @@
-# 本地文档 RAG 问答系统 / Local Document RAG Q&A System
+# Local Document RAG Q&A System / 本地文档 RAG 问答系统
 
-[English](#english) | [中文](#chinese)
+[English](#english) | [中文](#中文)
 
 ---
 
-<a name="english"></a>
-
 ## English
 
-### Project Overview
+### Overview
 
-A modern Document Q&A System built with **RAG (Retrieval-Augmented Generation)** technology. This application allows users to upload documents (.md, .txt files) and ask questions about their content, receiving accurate AI-generated answers with source references.
+A local RAG Q&A system built with Flask + Vue 3 + LangChain + FAISS.  
+It supports multi-knowledge-base isolation, file/URL ingestion, and streaming multi-turn chat.
 
-### Key Features
+### Core Features
 
-- **Document Upload**: Support for Markdown (.md) and Text (.txt) files up to 10MB
-- **AI-Powered Q&A**: Intelligent question answering using LangChain and OpenAI
-- **Source References**: View relevant document chunks used to generate answers
-- **Modern UI**: Clean and responsive interface built with Vue 3 and Arco Design
-- **Vector Search**: Fast similarity search using FAISS vector database
-- **Chunk Management**: Documents are automatically split into searchable chunks
+- Multi-tenant knowledge base isolation by `app_id`
+- Document upload and parsing (`.md / .txt / .pdf`)
+- URL ingestion (`http/https`) and indexing
+- Document management (list / delete by `document_id`)
+- RAG question answering with source snippets
+- Multi-turn memory by `session_id` + clear memory API
+- SSE token streaming (backend + frontend)
 
-### Architecture
+### Tech Stack
 
-#### Frontend
+- Backend: Python 3.13, Flask, LangChain, FAISS, uv
+- Frontend: Vue 3, TypeScript, Vite, Arco Design, markdown-it
 
-- **Framework**: Vue 3 + TypeScript + Vite
-- **UI Library**: Arco Design
-- **State Management**: Pinia
-- **Routing**: Vue Router
-- **Styling**: Tailwind CSS
+### Project Structure
 
-#### Backend
-
-- **Framework**: Flask (Python)
-- **AI/ML**: LangChain, OpenAI API
-- **Vector Database**: FAISS
-- **Document Processing**: LangChain Document Loaders & Splitters
-- **Database**: PostgreSQL with SQLAlchemy
+```text
+.
+├─ Backend
+│  ├─ app
+│  ├─ internal
+│  │  ├─ handler
+│  │  ├─ router
+│  │  └─ service
+│  ├─ docs
+│  └─ run_backend.bat
+└─ frontend
+   └─ src
+```
 
 ### Quick Start
 
-#### Prerequisites
+#### 1. Start Backend
 
-- Node.js 18+
-- Python 3.13+
-- PostgreSQL 13+
-- OpenAI API Key (or compatible API)
-
-#### Backend Setup
-
-1. **Navigate to backend directory**:
-
-```bash
+```powershell
 cd Backend
-```
-
-2. **Install dependencies** (using uv):
-
-```bash
-# Install uv if you haven't already
-pip install uv
-
-# Install dependencies
 uv sync
-```
-
-3. **Configure environment variables**:
-
-```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env and configure your API keys
-# Required: OPENAI_API_KEY, OPENAI_API_BASE
-```
-
-4. **Initialize database**:
-
-```bash
-# Run database migrations
-flask db upgrade
-```
-
-5. **Start the backend server**:
-
-Windows (recommended):
-
-```bat
 run_backend.bat
 ```
 
-CLI alternative:
+Backend default: `http://127.0.0.1:5000`
+
+#### 2. Start Frontend
 
 ```powershell
-set PYTHONPATH=.
-uv run python -m app.http.app
-```
-
-The backend will run on `http://localhost:5000`
-
-#### Frontend Setup
-
-1. **Navigate to frontend directory**:
-
-```bash
 cd frontend
-```
-
-2. **Install dependencies**:
-
-```bash
-# Using yarn (recommended)
-yarn install
-
-# Or using npm
 npm install
-```
-
-3. **Start the development server**:
-
-```bash
-# Using yarn
-yarn dev
-
-# Or using npm
 npm run dev
 ```
 
-The frontend will run on `http://localhost:5173`
+Frontend default: `http://127.0.0.1:5173`
 
-### Usage
+#### 3. Entry
 
-1. **Open the application** in your browser at `http://localhost:5173/rag`
+- RAG page: `/rag`
 
-2. **Upload documents**:
-   - Click "Upload Files" button
-   - Select .md or .txt files (max 10MB)
-   - Files will be automatically processed and indexed
+### Key RAG APIs
 
-3. **Ask questions**:
-   - Type your question in the input field
-   - Click "Send" or press Enter
-   - View the AI-generated answer with source references
+- `POST /apps/{app_id}/rag/documents/upload`
+- `POST /apps/{app_id}/rag/url/upload`
+- `GET /apps/{app_id}/rag/documents`
+- `DELETE /apps/{app_id}/rag/documents/{document_id}`
+- `POST /apps/{app_id}/rag/ask`
+- `POST /apps/{app_id}/rag/ask/stream`
+- `DELETE /apps/{app_id}/rag/sessions/{session_id}/memory`
 
-4. **Manage documents**:
-   - View all uploaded documents in the left panel
-   - See document size and chunk count
-   - Clear all documents when needed
-
-### Configuration
-
-#### Backend Environment Variables (.env)
+### Environment Variables (`Backend/.env`)
 
 ```env
-# 千帆 Embedding API
+OPENAI_API_KEY=your_api_key
+OPENAI_API_BASE=https://api.moonshot.cn/v1
 QIANFAN_ACCESS_KEY=your_access_key
 QIANFAN_SECRET_KEY=your_secret_key
-
-# 月之暗面 LLM API
-OPENAI_API_KEY=your_moonshot_api_key
-OPENAI_API_BASE=https://api.moonshot.cn/v1
-
-# Flask 配置
 FLASK_DEBUG=1
 WTF_CSRF_ENABLED=False
 ```
 
-### Project Structure
-
-```
-.
-├── Backend/                 # Python Flask backend
-│   ├── app/                # Application entry point
-│   ├── config/             # Configuration files
-│   ├── internal/           # Business logic
-│   │   ├── handler/        # Request handlers
-│   │   ├── service/        # Business services
-│   │   ├── router/         # API routes
-│   │   └── model/          # Data models
-│   ├── templates/          # HTML templates
-│   └── storage/            # Data storage
-├── frontend/               # Vue 3 frontend
-│   ├── src/
-│   │   ├── api/           # API clients
-│   │   ├── components/    # Vue components
-│   │   ├── composables/   # Composables
-│   │   ├── views/         # Page views
-│   │   └── stores/        # Pinia stores
-│   └── public/            # Static assets
-└── README.md              # This file
-```
-
-### Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### License
-
-This project is open source and available under the MIT License.
-
 ---
-
-<a name="chinese"></a>
 
 ## 中文
 
 ### 项目简介
 
-基于 **RAG（检索增强生成）** 技术构建的现代化文档问答系统。该应用允许用户上传文档（.md、.txt 文件）并针对文档内容提问，获取带有来源引用的准确 AI 生成答案。
+基于 Flask + Vue 3 + LangChain + FAISS 的本地文档问答系统。  
+支持多知识库隔离、文件/链接入库与流式多轮对话。
 
 ### 核心功能
 
-- **文档上传**: 支持 Markdown (.md) 和文本 (.txt) 文件，最大 10MB
-- **AI 智能问答**: 使用 LangChain 和 OpenAI 实现智能问答
-- **来源引用**: 查看生成答案时使用的相关文档片段
-- **现代界面**: 使用 Vue 3 和 Arco Design 构建的简洁响应式界面
-- **向量搜索**: 使用 FAISS 向量数据库实现快速相似度搜索
-- **分块管理**: 文档自动分割为可搜索的文本块
+- 按 `app_id` 隔离知识库数据
+- 文档上传与解析（`md / txt / pdf`）
+- URL 入库（`http/https`）
+- 文档管理（列表 / 按 `document_id` 删除）
+- RAG 问答并返回来源片段
+- 基于 `session_id` 的多轮记忆与清理
+- SSE 流式输出（前后端）
 
-### 技术架构
+### 技术栈
 
-#### 前端技术栈
+- 后端：Python 3.13、Flask、LangChain、FAISS、uv
+- 前端：Vue 3、TypeScript、Vite、Arco Design、markdown-it
 
-- **框架**: Vue 3 + TypeScript + Vite
-- **UI 库**: Arco Design
-- **状态管理**: Pinia
-- **路由**: Vue Router
-- **样式**: Tailwind CSS
+### 目录结构
 
-#### 后端技术栈
-
-- **框架**: Flask (Python)
-- **AI/ML**: LangChain、OpenAI API
-- **向量数据库**: FAISS
-- **文档处理**: LangChain 文档加载器和分割器
-- **数据库**: PostgreSQL + SQLAlchemy
+```text
+.
+├─ Backend
+│  ├─ app
+│  ├─ internal
+│  │  ├─ handler
+│  │  ├─ router
+│  │  └─ service
+│  ├─ docs
+│  └─ run_backend.bat
+└─ frontend
+   └─ src
+```
 
 ### 快速开始
 
-#### 环境要求
+#### 1. 启动后端
 
-- Node.js 18+
-- Python 3.13+
-- PostgreSQL 13+
-- OpenAI API Key（或兼容的 API）
-
-#### 后端设置
-
-1. **进入后端目录**:
-
-```bash
+```powershell
 cd Backend
-```
-
-2. **安装依赖**（使用 uv）:
-
-```bash
-# 如果尚未安装 uv
-pip install uv
-
-# 安装依赖
 uv sync
-```
-
-3. **配置环境变量**:
-
-```bash
-# 复制示例环境文件
-cp .env.example .env
-
-# 编辑 .env 文件并配置您的 API 密钥
-# 必需配置: OPENAI_API_KEY, OPENAI_API_BASE
-```
-
-4. **初始化数据库**:
-
-```bash
-# 运行数据库迁移
-flask db upgrade
-```
-
-5. **启动后端服务**:
-
-```bat
 run_backend.bat
 ```
 
+后端默认地址：`http://127.0.0.1:5000`
+
+#### 2. 启动前端
+
 ```powershell
-set PYTHONPATH=.
-uv run python -m app.http.app
-```
-
-后端服务将运行在 `http://localhost:5000`
-
-#### 前端设置
-
-1. **进入前端目录**:
-
-```bash
 cd frontend
-```
-
-2. **安装依赖**:
-
-```bash
-# 使用 yarn（推荐）
-yarn install
-
-# 或使用 npm
 npm install
-```
-
-3. **启动开发服务器**:
-
-```bash
-# 使用 yarn
-yarn dev
-
-# 或使用 npm
 npm run dev
 ```
 
-前端服务将运行在 `http://localhost:5173`
+前端默认地址：`http://127.0.0.1:5173`
 
-### 使用说明
+#### 3. 页面入口
 
-1. **在浏览器中打开应用**: `http://localhost:5173/rag`
+- RAG 页面：`/rag`
 
-2. **上传文档**:
-   - 点击"Upload Files"按钮
-   - 选择 .md 或 .txt 文件（最大 10MB）
-   - 文件将自动处理并建立索引
+### 关键 RAG API
 
-3. **提问**:
-   - 在输入框中输入您的问题
-   - 点击"Send"按钮或按 Enter 键
-   - 查看 AI 生成的答案和来源引用
+- `POST /apps/{app_id}/rag/documents/upload`
+- `POST /apps/{app_id}/rag/url/upload`
+- `GET /apps/{app_id}/rag/documents`
+- `DELETE /apps/{app_id}/rag/documents/{document_id}`
+- `POST /apps/{app_id}/rag/ask`
+- `POST /apps/{app_id}/rag/ask/stream`
+- `DELETE /apps/{app_id}/rag/sessions/{session_id}/memory`
 
-4. **管理文档**:
-   - 在左侧面板查看所有已上传的文档
-   - 显示文档大小和分块数量
-   - 需要时可清除所有文档
-
-### 配置说明
-
-#### 后端环境变量 (.env)
+### 环境变量（`Backend/.env`）
 
 ```env
-# 千帆 Embedding API
+OPENAI_API_KEY=your_api_key
+OPENAI_API_BASE=https://api.moonshot.cn/v1
 QIANFAN_ACCESS_KEY=your_access_key
 QIANFAN_SECRET_KEY=your_secret_key
-
-# 月之暗面 LLM API
-OPENAI_API_KEY=your_moonshot_api_key
-OPENAI_API_BASE=https://api.moonshot.cn/v1
-
-# Flask 配置
 FLASK_DEBUG=1
 WTF_CSRF_ENABLED=False
 ```
 
-### 项目结构
+### 说明
 
-```
-.
-├── Backend/                 # Python Flask 后端
-│   ├── app/                # 应用入口
-│   ├── config/             # 配置文件
-│   ├── internal/           # 业务逻辑
-│   │   ├── handler/        # 请求处理器
-│   │   ├── service/        # 业务服务
-│   │   ├── router/         # API 路由
-│   │   └── model/          # 数据模型
-│   ├── templates/          # HTML 模板
-│   └── storage/            # 数据存储
-├── frontend/               # Vue 3 前端
-│   ├── src/
-│   │   ├── api/           # API 客户端
-│   │   ├── components/    # Vue 组件
-│   │   ├── composables/   # 组合式函数
-│   │   ├── views/         # 页面视图
-│   │   └── stores/        # Pinia 状态管理
-│   └── public/            # 静态资源
-└── README.md              # 本文件
-```
-
-### 贡献
-
-欢迎贡献！请随时提交 Pull Request。
-
-### 许可证
-
-本项目是开源项目，采用 MIT 许可证。
+- `__pycache__` 和 `*.pyc` 已加入 Git 忽略。
+- 详细迭代记录：`Backend/docs/今日功能更新-2026-03-11.md`
