@@ -1,0 +1,31 @@
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+ * Restarting with stat
+USER_AGENT environment variable not set, consider setting it to identify your requests.
+ * Debugger is active!
+ * Debugger PIN: 987-792-995
+127.0.0.1 - - [12/Mar/2026 16:57:09] "GET /rag HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 16:57:09] "GET /apps/test/rag/documents HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 16:57:09] "GET / HTTP/1.1" 500 -
+127.0.0.1 - - [12/Mar/2026 16:58:34] "GET /apps/default/rag/documents HTTP/1.1" 200 -
+[WARNING][2026-03-12 16:58:42.420] redis_rate_limiter.py:21 [t:272]: No redis installed, RedisRateLimiter unavailable. Ignore this warning if you don't need to use qianfan SDK in distribution environment
+127.0.0.1 - - [12/Mar/2026 16:59:10] "GET /apps/default/rag/documents HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 16:59:34] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 16:59:35] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:00:18] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:02:09] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:02:25] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:02:43] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:02:58] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:03:10] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:03:23] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:03:48] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:04:19] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+127.0.0.1 - - [12/Mar/2026 17:04:53] "POST /apps/default/rag/ask/stream HTTP/1.1" 200 -
+forrtl: error (200): program aborting due to window-CLOSE event
+Image              PC                Routine            Line        Source             
+KERNELBASE.dll     00007FFA1064D64D  Unknown               Unknown  Unknown
+KERNEL32.DLL       00007FFA11E4E8D7  Unknown               Unknown  Unknown
+ntdll.dll          00007FFA12F0C40C  Unknown               Unknown  Unknown
